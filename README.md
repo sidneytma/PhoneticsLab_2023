@@ -1,2 +1,2 @@
 # PhoneticsLab_2023
-Tasks I completed as a research assistant in the Phonetics Lab at UCSD, under the mentorship of Maxine Van-Doren.
+Research troubleshooting, data cleaning, and phonetic annotation for the UCSD Phonetics Lab, under the mentorship of Maxine Van-Doren.
