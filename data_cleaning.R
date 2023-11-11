@@ -29,6 +29,8 @@
 
 #------------------------------
 
+#### Organize dataset from data folder
+
 # Set up directories
 dir_new_data <- "data/New data/" # Name of folder with all participant data sheets
 path_durations <- "data/durations_updated.csv" # Filename for durations_updated.csv
@@ -66,11 +68,12 @@ ppt_data <- ppt_data |> mutate(
 # Fix date column
 ppt_data$date <- sapply(strsplit(ppt_data$date, "_"), `[`, 1)
 
-# Rename key_resp columns
+# Rename key_resp columns and time-to-target column
 ppt_data <- ppt_data |> 
   rename(ppt_response = key_resp.keys, 
          correct = key_resp.corr,
-         response_time = key_resp.rt)
+         response_time = key_resp.rt,
+         ttt_maxine = time_to_target)
 
 #### Calculate reaction times
 
@@ -97,18 +100,14 @@ ppt_data <- ppt_data |>
     target_at_onset = ifelse(word1 == "gape" | word2 == "gape", 0, target_at_onset)
     )
 
-# Calculate reaction times based on Maxine's time-to-targets
+# Create a new time-to-target column that uses ttt_maxine when possible,
+# and ttt_sidney when necessary
 ppt_data <- ppt_data |>
-  mutate(rt_maxine = response_time - time_to_target)
+  mutate(time_to_target = coalesce(ttt_maxine, ttt_sidney))
 
-# Calculate the reaction time based on Sidney's time-to-targets
+# Calculate reaction times
 ppt_data <- ppt_data |>
-  mutate(rt_sidney = response_time - ttt_sidney)
-
-# Create a new reaction time column that uses rt_maxine when possible,
-# and rt_sidney when necessary
-ppt_data <- ppt_data |>
-  mutate(reaction_time = coalesce(rt_maxine, rt_sidney))
+  mutate(reaction_time = response_time - time_to_target)
 
 # Create a log reaction time column
 ppt_data <- ppt_data |>
@@ -117,8 +116,9 @@ ppt_data <- ppt_data |>
 # Reorder columns
 reorder_cols <- c("participant", "date", "category", "speaker", "voicequality", "vq1", "vq2", 
                   "word1", "word2", "target", "target_at_onset", 
-                  "ppt_response", "correct", "response_time", "time_to_target", "ttt_sidney",
-                  "rt_maxine", "rt_sidney", "reaction_time", "log_rt",
+                  "ppt_response", "correct", "response_time", "time_to_target",
+                  "ttt_maxine", "ttt_sidney",
+                  "reaction_time", "log_rt",
                   "audio", "file")
 ppt_data <- ppt_data[, reorder_cols]
 
