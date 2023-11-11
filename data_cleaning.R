@@ -1,85 +1,78 @@
-# Script for cleaning and setting up the participant data.
+# Script for cleaning and setting up the participant data
 
 #------------------------------
 
-# Saves dataset as "ppt_data.csv", which stacks participant data, and includes the following columns:
-# index
+# Saves dataset as "ppt_data.csv", which stacks all participant data
+# For our analysis, we're going to include many columns:
+
+# participant (number)
+# date
 # category (of trial): target, filler, or attention
-# word1
-# word2
-# target (correct answer)
-# ppt_response: left or right
+# speaker (of audio)
 # voicequality (of sentence and of target): m_m, m_c, m_g, c_m, c_c, or c_g
 # vq1 (voice quality of sentence)
 # vq2 (voice quality of target)
-# correct (whether or not ppt answered correctly): 0 or 1
-# reaction_time (based on Maxine's time-to-targets)
+# word1
+# word2
+# target (correct answer)
+# target_at_onset (whether the target phoneme is at the onset of the target word): 0 or 1
+# ppt_response: left or right
+# correct (whether ppt answered correctly): 0 or 1
+# response_time
+# time_to_target
+# rt_maxine (based on Maxine's time-to-targets)
 # rt_sidney (reaction time based on Sidney's time-to-targets)
-# speaker (of audio)
+# reaction_time (rt_maxine, and rt_sidney to fill in missing data)
+# log_rt (log reaction time)
 # audio (full pathname)
 # file (basename)
-# participant (number)
-# date
 
 #------------------------------
 
 # Set up directories
-dir_output <- "/Users/sidneyma/Desktop/school/lign199/" # Where ppt_data (final csv) should end up
-dir_new_data <- "/Users/sidneyma/Desktop/school/lign199/New data/" # Name of folder with all participant data sheets
-path_durations <- "/Users/sidneyma/Desktop/school/lign199/durations_updated.csv" # Filename for durations_updated.csv
+dir_new_data <- "data/New data/" # Name of folder with all participant data sheets
+path_durations <- "data/durations_updated.csv" # Filename for durations_updated.csv
 
 # Load tidyverse
 library(tidyverse)
 
-#### Part 1 - Cleaning and organizing participant data into one table
-
 # Function to read in the relevant columns from a participant data sheet
 get_df <- function(filename) {
-  relevant_cols <- c('word1', 'word2', 'target', 'voicequality', 'speaker', 
-                     'time_to_target', 'response', 'audio', 'file',
-                     'category', 'key_resp.keys', 'key_resp.corr',
-                     'key_resp.rt', 'participant', 'date')
+  relevant_cols <- c("word1", "word2", "target", "voicequality", "speaker", 
+                     "time_to_target", "response", "audio", "file",
+                     "category", "key_resp.keys", "key_resp.corr",
+                     "key_resp.rt", "participant", "date")
   df <- read.csv(filename)[,relevant_cols]
   df <- df[!is.na(df$key_resp.corr),]
   return(df)
 }
 
-# Apply this function to all participants in the "New Data" folder
+# Apply this function to all participants in the "New Data" folder,
+# then bind them together
 filenames <- list.files(dir_new_data, full.names = TRUE)
 print(filenames)
 dfs <- lapply(filenames, get_df)
-big_df <- bind_rows(dfs) |>
+ppt_data <- bind_rows(dfs) |>
   arrange(participant)
 
 # Set up voice quality columns
-big_df$vq1 <- ifelse(is.na(big_df$voicequality), NA, substr(big_df$voicequality, 1, 1))
-big_df$vq2 <- ifelse(is.na(big_df$voicequality), NA, substr(big_df$voicequality, 3, 3))
-
-#Set up reaction time column (based on Maxine's time-to-targets)
-big_df$reaction_time <- big_df$key_resp.rt - big_df$time_to_target
-big_df <- big_df |>
-  select(-time_to_target) |>
-  rename(ppt_response = key_resp.keys, correct = key_resp.corr)
+ppt_data <- ppt_data |> mutate(
+  vq1 = ifelse(is.na(voicequality), NA, substr(voicequality, 1, 1))
+)
+ppt_data <- ppt_data |> mutate(
+  vq2 = ifelse(is.na(voicequality), NA, substr(voicequality, 3, 3))
+)
 
 # Fix date column
-big_df$date <- sapply(strsplit(big_df$date, "_"), `[`, 1)
+ppt_data$date <- sapply(strsplit(ppt_data$date, "_"), `[`, 1)
 
-# Reorder columns
-reorder_cols <- c('category', 'word1', 'word2', 'target', 'ppt_response', 
-                  'voicequality', 'vq1', 'vq2', 'correct', 'reaction_time', 
-                  'key_resp.rt', 'speaker', 'audio', 'file', 'participant', 
-                  'date')
-big_df <- big_df[, reorder_cols]
+# Rename key_resp columns
+ppt_data <- ppt_data |> 
+  rename(ppt_response = key_resp.keys, 
+         correct = key_resp.corr,
+         response_time = key_resp.rt)
 
-# Add index column
-big_df <- big_df |>
-  mutate(index = row_number()) |>
-  select(index, everything())
-
-# Rename as ppt_data
-ppt_data <- big_df
-
-#### Part 2 - adding reaction times based on durations_updated.csv
+#### Calculate reaction times
 
 # Read in durations_updated.csv
 durations <- read_csv(path_durations)
@@ -96,24 +89,38 @@ ppt_data <- left_join(ppt_data, durations, by = "file")
 ppt_data <- ppt_data |>
   mutate(ttt_sidney = ifelse(category == "attention", NA, ttt_sidney))
 
-# When the distinction is between "gate" and "gape", add 0.2 seconds to the time-to-target
+# When the distinction is between "gate" and "gape":
+# add 0.2 seconds to the time-to-target, and set target_at_onset to 0.
 ppt_data <- ppt_data |>
-  mutate(ttt_sidney = ifelse(word1 == "gape" | word2 == "gape", 
-                             ttt_sidney + 0.2, ttt_sidney))
+  mutate(
+    ttt_sidney = ifelse(word1 == "gape" | word2 == "gape", ttt_sidney + 0.2, ttt_sidney),
+    target_at_onset = ifelse(word1 == "gape" | word2 == "gape", 0, target_at_onset)
+    )
 
-# Calculate the reaction time based on Sidney's data
-ppt_data$rt_sidney <- with(ppt_data, key_resp.rt - ttt_sidney)
+# Calculate reaction times based on Maxine's time-to-targets
+ppt_data <- ppt_data |>
+  mutate(rt_maxine = response_time - time_to_target)
 
-# Round reaction time columns
-ppt_data$reaction_time <- round(ppt_data$reaction_time, digits = 3)
-ppt_data$rt_sidney <- round(ppt_data$rt_sidney, digits = 3)
+# Calculate the reaction time based on Sidney's time-to-targets
+ppt_data <- ppt_data |>
+  mutate(rt_sidney = response_time - ttt_sidney)
+
+# Create a new reaction time column that uses rt_maxine when possible,
+# and rt_sidney when necessary
+ppt_data <- ppt_data |>
+  mutate(reaction_time = coalesce(rt_maxine, rt_sidney))
+
+# Create a log reaction time column
+ppt_data <- ppt_data |>
+  mutate(log_rt = log(reaction_time))
 
 # Reorder columns
-reorder_cols <- c('index', 'category', 'word1', 'word2', 'target', 
-                  'ppt_response', 'voicequality', 'vq1', 'vq2', 'correct', 
-                  'reaction_time', 'rt_sidney', 'speaker', 'audio', 'file', 
-                  'participant', 'date')
+reorder_cols <- c("participant", "date", "category", "speaker", "voicequality", "vq1", "vq2", 
+                  "word1", "word2", "target", "target_at_onset", 
+                  "ppt_response", "correct", "response_time", "time_to_target", "ttt_sidney",
+                  "rt_maxine", "rt_sidney", "reaction_time", "log_rt",
+                  "audio", "file")
 ppt_data <- ppt_data[, reorder_cols]
 
 # Write to csv file
-ppt_data |> write_csv(paste0(dir_output, "ppt_data.csv"))
+ppt_data |> write_csv("data/ppt_data.csv")
